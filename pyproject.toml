@@ -1,0 +1,20 @@
+[project]
+name = "edit4config"
+version = "2022.08.29"
+description = "Nokia SROS, Cisco IOS style (parent/child with space indent) config edit (add/delete/replace) with regex"
+readme = "README.md"
+license = { file="LICENSE" }
+authors = [
+  {name="Umur Arslan"},
+]
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+requires-python = ">=3.9"
+
+[project.urls]
+"Homepage" = "https://github.com/umurarslan/edit4config"
