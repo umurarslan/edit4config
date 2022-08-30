@@ -34,7 +34,7 @@ pip install edit4config-X.zip
 
 ## CwP (Config with Parents) Example
 
-***Config Raw Text:***
+***Config Text:***
 
 ```
 configure
