@@ -1,95 +1,23 @@
 '''
-Nokia SROS, Cisco IOS style (parent/child with space indentation) config edit (add, delete, replace) with regex.
+Nokia SROS, Cisco IOS style (parent/child with space indentation) config edit module with add, delete, replace and search function with regex supported.
 
-Version: 2022.08.29
+Version: 2022.02.05
 
 '''
 
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
+
+import numpy as np
 
 
 @dataclass
 class EditConfig:
-    r'''
-    ### EditConfig Class:
-
-        Nokia SROS, Cisco IOS style (parent/child with space indentation) config edit module with add, delete, replace and search function with regex supported. 
-
-        Every line in config text converted to path (parent) and value (line) based on space indent. 
-
-        After this converting process (Config with Parents or CwP) every config line is unique with own parents and editing can be done easily.
-
-    ### CWP (config with parents) example::
-
-        "no shutdown" under "configure,card 1,mda 1" parent:
-
-        config text:
-            configure
-                ...
-                card 1
-                    ...
-                    mda1
-                        ...
-                        no shutdown
-                        ...
-                    ...
-                ...
-            ...
-
-        config line               :   "            no shutdown" (string)
-
-        cwp (config with parents) :   "['configure,card 1,mda 1', '            no shutdown']" (list)
-
-        cwp text                  :   "configure,card 1,mda 1,no shutdown" (string)
-
-    ### EditConfig Simple Usage::
-
-        With config text converting to CWP, EditConfig functions add-delete-replace-search etc. can be used.
-
-        # import EditConfig module
-        from edit4config import EditConfig
-
-        # read config file and get config_text
-        with open(CONFIG_FILE) as file:
-            config_text = file.read()
-
-        # define EditConfig object with options e.g. comments, step_space
-        # comments for Nokia: ('#', 'echo'), Cisco: ('!')
-        # step_space for Nokia: 4, Cisco: 1
-        device_cwp = EditConfig(config_text, 4, ('#', 'echo'))
-
-        # add "sync-e" before "no shutdown" under configure,card 1,mda 1
-        device_cwp.add_before_lines(
-                                    'configure,card 1,mda 1,sync-e',
-                                    'configure,card 1,mda 1,no shutdown'
-                                )
-
-        # delete "no shutdown" under configure,card 1,mda 1
-        device_cwp.delete_serial_lines('configure,card 1,mda 1,no shutdown')
-
-        # replace "no shutdown" with "shutdown" under configure,card 1,mda 1
-        device_cwp.replace_line(
-                                'configure,card 1,mda 1,no shutdown',
-                                'configure,card 1,mda 1,shutdown'
-                            )
-
-        # delete "no shutdown" for all card and all mda with regex
-        device_cwp.delete_serial_lines(
-                                    'configure,card \d+,mda \d+,no shutdown',
-                                    regex_match=True, 
-                                    multiple_match=True
-                                    )
-
-    ### EditConfig Advanced Usage:
-
-        Besides simple usage check other EditConfig functions e.g. cwp_search, cwp_serial_check.
-
-        Add, delete, replace functions supported regex, multiple match.
-
-        Add, delete function supported serial cwp lines with newline.
-
+    '''
+    Nokia SROS, Cisco IOS style (parent/child with space indentation) config edit module with add, delete, replace and search function with regex supported. 
+    Every line in config text converted to path (parent) and value (line) based on space indent.
+    After this converting process (Config with Parents or CwP) every config line is unique with own parents and editing can be done easily.
     '''
     config_text: str
     step_space: int
@@ -126,7 +54,9 @@ class EditConfig:
 
         # text to list, remove empty line, convert to config with parent format
         config_list = config_text.splitlines()
-        config_cwp = [[[], i.rstrip()] for i in config_list if i.strip() != '']
+        # convert list to np array with dtype=object
+        config_cwp = np.array(
+            [[[], i.rstrip()] for i in config_list if i.strip() != ''], dtype=object)
         #
         for i, line in enumerate(config_cwp):
             # if comment continue
@@ -140,15 +70,15 @@ class EditConfig:
                 if sline[1].startswith(comment_tuple):
                     # comment sline path = "line" path if empty "line" value
                     if line[0] != []:
-                        config_cwp[i+1:][si][0] = line[0]
+                        config_cwp[i+1+si][0] = line[0]
                     else:
-                        config_cwp[i+1:][si][0] = [line[1].strip()]
+                        config_cwp[i+1+si][0] = [line[1].strip()]
                     continue
                 # lead space number of sub line
                 slead_space_n = len(sline[1]) - len(sline[1].lstrip())
                 # check space and change path else break
                 if lead_space_n < slead_space_n:
-                    config_cwp[i+1:][si][0].append(line[1].strip())
+                    config_cwp[i+1+si][0].append(line[1].strip())
                 else:
                     break
         # convert [path-list,value] to [path-text,value]
@@ -157,7 +87,10 @@ class EditConfig:
 
     @staticmethod
     def _ec_text_convert(config_text: str, step_space: int, comment_tuple: tuple = (), sep: str = ',') -> list[list[str]]:
-        ''' convert cwp-text to cwp-list '''
+        '''
+        convert cwp-text to cwp-list
+        'configure,card 1,mda 1,no shutdown' -> [['configure, card 1, mda 1', '            no shutdown'], ...]
+        '''
         # line_list = [[line.split(',')[:-1], line.split(',')[-1]]
         line_list = config_text.strip().splitlines()
         # convert [['path1a,path1b','value1a'],['path2a,path2b','value2b']]
@@ -179,7 +112,9 @@ class EditConfig:
 
     @staticmethod
     def cli_convert(config_text: str, comment_tuple: tuple = (), sep: str = ',') -> str:
-        ''' cli config convert to cwp-text config '''
+        '''
+        cli config_text convert to cwp-text config, use for testing and check node cwp-text output
+        '''
         # convert to cwp
         cwp_direct = EditConfig._config_with_parent(
             config_text, comment_tuple, sep)
@@ -414,8 +349,8 @@ class EditConfig:
         for iline, vline in enumerate(self.cwp):
             # for regex
             if (regex_match and
-                    re.match(fr'{old_list[0]}', vline[0]) and
-                    re.match(fr'{old_list[1]}', vline[1])
+                re.match(fr'{old_list[0]}', vline[0]) and
+                re.match(fr'{old_list[1]}', vline[1])
                 ):
                 all_replace_line.append(iline)
                 if not multiple_match:
