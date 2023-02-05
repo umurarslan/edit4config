@@ -14,20 +14,8 @@ Nokia SROS, Cisco IOS style (parent/child with space indentation) config edit mo
 
 ## Installation
 
-**Option 1:**
-
-From Python Package Index (PyPI) Repo:
-
 ```
 pip install edit4config
-```
-
-**Option 2:**
-
-Download project ZIP file and run below command:
-
-```
-pip install edit4config-X.zip
 ```
 
 ---
@@ -139,6 +127,31 @@ new_config_text = device_cwp.cwp_to_text()
 
 with open('CONFIG_FILE_NEW.txt', 'w') as file:
     file.write(new_config_text)
+
+```
+
+Another example below for getting CwP and making custom jobs.
+
+```py
+# import EditConfig module
+from edit4config import EditConfig
+
+# read config file and get config_text
+with open('CONFIG_FILE.txt') as file:
+    config_text = file.read()
+
+# define EditConfig object with options e.g. comments, step_space
+# comments for Nokia is ('#', 'echo') and for Cisco is ('!')
+# step_space for Nokia is 4 and for Cisco is 1
+device_cwp = EditConfig(config_text, 4, ('#', 'echo'))
+
+# get full cwp-list from EditConfig object with <cwp> variable
+device_cwp_list = device_cwp.cwp
+
+# get ntp config from cwp-list and print
+for line_path, line_value in device_cwp.cwp:
+    if line_path.startswith('configure,system,time,ntp'):
+        print(line_value.strip())
 
 ```
 
