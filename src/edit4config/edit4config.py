@@ -1,15 +1,13 @@
 '''
 Nokia SROS, Cisco IOS style (parent/child with space indentation) config edit module with add, delete, replace and search function with regex supported.
 
-Version: 2022.02.05
+Version: 2023.12.24
 
 '''
 
 
 import re
 from dataclasses import dataclass
-
-import numpy as np
 
 
 @dataclass
@@ -52,38 +50,35 @@ class EditConfig:
             raise SystemError(
                 'TAB character found in config text, remove TAB characters or replace with whitespace!')
 
-        # text to list, remove empty line, convert to config with parent format
-        config_list = config_text.splitlines()
-        # convert list to np array with dtype=object
-        config_cwp = np.array(
-            [[[], i.rstrip()] for i in config_list if i.strip() != ''], dtype=object)
-        #
-        for i, line in enumerate(config_cwp):
-            # if comment continue
-            if line[1].startswith(comment_tuple):
-                continue
-            # lead space number of line
-            lead_space_n = len(line[1]) - len(line[1].lstrip())
-            # change path subline with appending current line depends on space
-            for si, sline in enumerate(config_cwp[i+1:]):
-                # if subline starts with comment change path wo check space and cont.
-                if sline[1].startswith(comment_tuple):
-                    # comment sline path = "line" path if empty "line" value
-                    if line[0] != []:
-                        config_cwp[i+1+si][0] = line[0]
-                    else:
-                        config_cwp[i+1+si][0] = [line[1].strip()]
+        config_list = [i.rstrip()
+                       for i in config_text.splitlines() if i.strip() != '']
+        path_dict = {}
+        cwp_list = []
+        line_path_list = []
+        for line in config_list:
+            # if comment line
+            if line.startswith(comment_tuple):
+                if line_path_list:
+                    cwp_list.append([sep.join(line_path_list), line])
                     continue
-                # lead space number of sub line
-                slead_space_n = len(sline[1]) - len(sline[1].lstrip())
-                # check space and change path else break
-                if lead_space_n < slead_space_n:
-                    config_cwp[i+1+si][0].append(line[1].strip())
-                else:
-                    break
-        # convert [path-list,value] to [path-text,value]
-        config_cwp_path_text = [[sep.join(i[0]), i[1]] for i in config_cwp]
-        return config_cwp_path_text
+                if config_list.index(line)-1 >= 0:
+                    before_line_index = config_list.index(line)-1
+                    before_line = config_list[before_line_index]
+                    if not before_line.startswith(comment_tuple):
+                        cwp_list.append([before_line, line])
+                        line_path_list = [before_line]
+                        continue
+                cwp_list.append(['', line])
+                continue
+            space = len(line) - len(line.lstrip())
+            path_dict[space] = line.strip()
+            line_path_list = [
+                path_dict[key_space] for key_space in sorted(path_dict)
+                if key_space < space
+            ]
+            cwp_list.append([sep.join(line_path_list), line])
+
+        return cwp_list
 
     @staticmethod
     def _ec_text_convert(config_text: str, step_space: int, comment_tuple: tuple = (), sep: str = ',') -> list[list[str]]:
@@ -334,9 +329,9 @@ class EditConfig:
             # increase line number with len(add_list)
             change_line_number += len(add_list)
 
-    def replace_line(self, old_line: str, new_line: str, regex_match: bool = False, multiple_match: bool = False):
+    def replace_line(self, old_line: str, new_line: str, regex_match: bool = False, multiple_match: bool = False, regex_backreference=False, replace_path=False):
         '''
-        replace old single line with new single line
+        replace old single line with new single line (default: only value replace, path not replace)
         CASE: change single line without after-before
         '''
         # [0] for single line
@@ -345,21 +340,140 @@ class EditConfig:
         new_list = EditConfig._ec_text_convert(
             new_line, self.step_space, self.comment_tuple, self.sep)[0]
 
-        all_replace_line = []
-        for iline, vline in enumerate(self.cwp):
-            # for regex
-            if (regex_match and
-                re.match(fr'{old_list[0]}', vline[0]) and
-                re.match(fr'{old_list[1]}', vline[1])
-                ):
-                all_replace_line.append(iline)
+        if regex_backreference:
+            for iline, vline in enumerate(self.cwp):
+                if (re.match(fr'{old_list[0]}', vline[0]) and
+                        re.match(fr'{old_list[1]}', vline[1])):
+                    self.cwp[iline][0] = re.sub(
+                        fr'{old_list[0]}', fr'{new_list[0]}', self.cwp[iline][0])
+                    self.cwp[iline][1] = re.sub(
+                        fr'{old_list[1]}', fr'{new_list[1]}', self.cwp[iline][1])
+                    if not multiple_match:
+                        break
+
+        else:
+            all_replace_line = []
+            for iline, vline in enumerate(self.cwp):
+                # for regex
+                if (regex_match and
+                        re.match(fr'{old_list[0]}', vline[0]) and
+                        re.match(fr'{old_list[1]}', vline[1])
+                        ):
+                    all_replace_line.append(iline)
+                    if not multiple_match:
+                        break
+                # non regex
+                if vline == old_list:
+                    all_replace_line.append(iline)
+                    if not multiple_match:
+                        break
+            # replace with line number
+            for line_num in all_replace_line:
+                if replace_path:
+                    self.cwp[line_num] = new_list
+                else:
+                    self.cwp[line_num][1] = new_list[1]
+
+    def replace_serial_lines(self, old_serial_lines: str, new_serial_lines: str, regex_match: bool = False, multiple_match: bool = False):
+        '''
+        replace serial lines
+        CASE: partial replace
+        '''
+        delete_list = EditConfig._ec_text_convert(
+            old_serial_lines, self.step_space, self.comment_tuple, self.sep)
+        replace_list = EditConfig._ec_text_convert(
+            new_serial_lines, self.step_space, self.comment_tuple, self.sep)
+
+        # e.g [(start_iline,end_iline),]
+        len_dl = len(delete_list)
+        cont = True
+        while cont:
+            cont = False
+            for iline, vline in enumerate(self.cwp):
+                # for regex_match
+                if (regex_match and re.match(fr'{delete_list[0][0]}', vline[0]) and
+                        re.match(fr'{delete_list[0][1]}', vline[1])):
+                    cwp_part_list = self.cwp[iline:iline+len_dl]
+                    # regex match for every path and config line
+                    if (all((re.match(fr'{i[0]}', j[0]) for i, j in zip(delete_list, cwp_part_list))) and
+                            all((re.match(fr'{i[1]}', j[1]) for i, j in zip(delete_list, cwp_part_list)))):
+                        # del self.cwp[iline:iline+len_dl]
+                        cwp_delete_before_part = self.cwp[:iline]
+                        cwp_delete_after_part = self.cwp[iline+len_dl:]
+                        self.cwp = cwp_delete_before_part + replace_list + cwp_delete_after_part
+                        cont = True
+                        # if only single match not continue
+                        if not multiple_match:
+                            cont = False
+                        break
+                elif vline == delete_list[0] and self.cwp[iline:iline+len_dl] == delete_list:
+                    # del self.cwp[iline:iline+len_dl]
+                    cwp_delete_before_part = self.cwp[:iline]
+                    cwp_delete_after_part = self.cwp[iline+len_dl:]
+                    self.cwp = cwp_delete_before_part + replace_list + cwp_delete_after_part
+                    cont = True
+                    # if only single match not continue
+                    if not multiple_match:
+                        cont = False
+                    break
+        if regex_match:
+            self.cwp_update()
+
+    def replace_between_lines(self, start_with_line: str, end_with_line: str, new_serial_lines: str, regex_match: bool = False, multiple_match: bool = False):
+        '''
+        replace between <start_with_line> and <end_with_line> single line (first match only (non-greedy), start-end included)
+        CASE: replace tree/path
+        '''
+        start_with = EditConfig._ec_text_convert(
+            start_with_line, self.step_space, self.comment_tuple, self.sep)[0]
+        end_with = EditConfig._ec_text_convert(
+            end_with_line, self.step_space, self.comment_tuple, self.sep)[0]
+
+        replace_list = EditConfig._ec_text_convert(
+            new_serial_lines, self.step_space, self.comment_tuple, self.sep)
+
+        # for regex_match
+        if regex_match:
+            cont = True
+            while cont:
+                cont = False
+                start_line = None
+                for iline, vline in enumerate(self.cwp):
+                    # find start_line if start_line NOT found before
+                    if (start_line is None and
+                        re.match(fr'{start_with[0]}', vline[0]) and
+                            re.match(fr'{start_with[1]}', vline[1])):
+                        start_line = iline
+                    # find end_line if start_line found before
+                    if (start_line is not None and
+                        re.match(fr'{end_with[0]}', vline[0]) and
+                            re.match(fr'{end_with[1]}', vline[1])):
+                        end_line = iline
+                        # del between start and end
+                        # del self.cwp[start_line:end_line+1]
+                        cwp_delete_before_part = self.cwp[:start_line]
+                        cwp_delete_after_part = self.cwp[end_line+1:]
+                        self.cwp = cwp_delete_before_part + replace_list + cwp_delete_after_part
+                        # if multiple_match <while> continue
+                        if multiple_match:
+                            cont = True
+                        # exit from for
+                        break
+
+        # without regex
+        else:
+            while start_with in self.cwp:
+                # first index
+                fi_line = self.cwp.index(start_with)
+                # end index after fi
+                ei_line = self.cwp[fi_line:].index(end_with)
+                # del fi to ei
+                # del self.cwp[fi_line:(fi_line+ei_line+1)]
+                cwp_delete_before_part = self.cwp[:fi_line]
+                cwp_delete_after_part = self.cwp[fi_line+ei_line+1:]
+                self.cwp = cwp_delete_before_part + replace_list + cwp_delete_after_part
+                # if no multiple_match exit from <while> or check with while
                 if not multiple_match:
                     break
-            # non regex
-            if vline == old_list:
-                all_replace_line.append(iline)
-                if not multiple_match:
-                    break
-        # replace with line number
-        for line_num in all_replace_line:
-            self.cwp[line_num] = new_list
+        if regex_match:
+            self.cwp_update()
