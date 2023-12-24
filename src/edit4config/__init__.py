@@ -1,1 +1,1 @@
-from edit4config.edit4config import EditConfig
+from .edit4config import EditConfig
