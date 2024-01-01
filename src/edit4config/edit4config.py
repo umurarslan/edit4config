@@ -1,7 +1,7 @@
 '''
 Nokia SROS, Cisco IOS style (parent/child with space indentation) config edit module with add, delete, replace and search function with regex supported.
 
-Version: 2023.12.24
+Version: 2024.01.01
 
 '''
 
@@ -55,7 +55,7 @@ class EditConfig:
         path_dict = {}
         cwp_list = []
         line_path_list = []
-        for line in config_list:
+        for iline, line in enumerate(config_list):
             # if comment line
             if line.startswith(comment_tuple):
                 if line_path_list:
@@ -77,6 +77,19 @@ class EditConfig:
                 if key_space < space
             ]
             cwp_list.append([sep.join(line_path_list), line])
+
+            # path_dict delete
+            after_n = 1
+            while iline != len(config_list) - after_n:
+                after_line_index = iline + after_n
+                after_line = config_list[after_line_index]
+                after_n += 1
+                if after_line.startswith(comment_tuple):
+                    continue
+                after_space = len(after_line) - len(after_line.lstrip())
+                if space > after_space:
+                    del path_dict[space]
+                break
 
         return cwp_list
 
@@ -356,9 +369,9 @@ class EditConfig:
             for iline, vline in enumerate(self.cwp):
                 # for regex
                 if (regex_match and
-                        re.match(fr'{old_list[0]}', vline[0]) and
-                        re.match(fr'{old_list[1]}', vline[1])
-                        ):
+                    re.match(fr'{old_list[0]}', vline[0]) and
+                    re.match(fr'{old_list[1]}', vline[1])
+                    ):
                     all_replace_line.append(iline)
                     if not multiple_match:
                         break
