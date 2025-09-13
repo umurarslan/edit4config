@@ -152,12 +152,33 @@ device_cwp_list = device_cwp.cwp
 for line_path, line_value in device_cwp.cwp:
     if line_path.startswith('configure,system,time,ntp'):
         print(line_value.strip())
+```
+
+```py
+# import EditConfig module
+from edit4config import EditConfig
+
+# read config file and get config_text
+with open('CONFIG_FILE.txt') as file:
+    config_text = file.read()
+
+# define EditConfig object for Cisco
+cisco_ec = EditConfig(config_text, 1, ('!'), sep=',,,')
+
+# cwp search for all interface 
+interface_cwp_search = cisco_ec.cwp_search(r"^$", fr"interface ")
+print(interface_cwp_search)
+# print result : [['', 'interface Bundle-Ether1'], ...]
+
+# get only l2transport interface name with regex group capture
+interface_l2transport_name_list = cisco_ec.cwp_search_capture("interface (.+$)", "l2transport")
+print(interface_l2transport_name_list)
+# print result: [['GigabitEthernet1/1/1/1'],...]
 
 ```
 
 ---
 
-Besides simple usage check other EditConfig methods e.g. cwp_search, cwp_serial_check.
 
 
 
