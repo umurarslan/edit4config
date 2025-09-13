@@ -75,9 +75,6 @@ class EditConfig:
         if '\t' in config_text:
             raise SystemError(
                 'TAB character found in config text, remove TAB characters or replace with whitespace!')
-        if sep in config_text:
-            raise SystemError(
-                f'{sep} character found in config text, change sep {sep} character in class object! e.g. EditConfig(..., sep=",,,")')
 
         config_list = [i.rstrip()
                        for i in config_text.splitlines() if i.strip() != '']
