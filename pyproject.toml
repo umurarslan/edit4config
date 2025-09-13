@@ -1,6 +1,6 @@
 [project]
 name = "edit4config"
-version = "2025.09.13"
+version = "2025.09.14"
 description = "Nokia SROS, Cisco IOS style (parent/child with space indent) config edit (add/delete/replace) with regex"
 readme = "README.md"
 license = { file="LICENSE" }
