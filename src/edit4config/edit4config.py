@@ -1,7 +1,7 @@
 '''
 Nokia SROS, Cisco IOS style (parent/child with space indentation) config edit module with add, delete, replace and search function with regex supported.
 
-Version: 2024.01.01
+Version: 2025.09.13
 
 '''
 
@@ -21,10 +21,36 @@ class EditConfig:
     step_space: int
     comment_tuple: tuple = ()
     sep: str = ','
+    start_line: str = ''
+    end_line: str = ''
 
     def __post_init__(self):
+        if self.start_line and self.end_line:
+            self.config_text = EditConfig._get_between_lines(
+                self.config_text, self.start_line, self.end_line)
+
         self.cwp = EditConfig._config_with_parent(
             self.config_text, self.comment_tuple, self.sep)
+
+    @staticmethod
+    def _get_between_lines(config_text, start_line, end_line):
+        ''' get between two lines text with re.match, e.g. to get only configure - # Finished '''
+        config_text_lines = config_text.splitlines()
+        start_line_regex = re.compile(start_line)
+        end_line_regex = re.compile(end_line)
+        start_index = 0
+        end_index = 0
+        result_list = []
+        result_text = ''
+        for iline, line in enumerate(config_text_lines):
+            if start_line_regex.match(line):
+                start_index = iline
+            elif start_index and end_line_regex.match(line):
+                end_index = iline
+                result_list = config_text_lines[start_index:end_index+1]
+                result_text += '\n' + '\n'.join(result_list)+'\n'
+                break
+        return result_text
 
     @staticmethod
     def _config_with_parent(config_text: str, comment_tuple: tuple = (), sep: str = ',') -> list[list[str]]:
@@ -49,6 +75,9 @@ class EditConfig:
         if '\t' in config_text:
             raise SystemError(
                 'TAB character found in config text, remove TAB characters or replace with whitespace!')
+        if sep in config_text:
+            raise SystemError(
+                f'{sep} character found in config text, change sep {sep} character in class object! e.g. EditConfig(..., sep=",,,")')
 
         config_list = [i.rstrip()
                        for i in config_text.splitlines() if i.strip() != '']
@@ -142,12 +171,30 @@ class EditConfig:
         ''' convert cwp to config_text'''
         return '\n'.join([i[1] for i in self.cwp])
 
-    def cwp_search(self, path: str = '', value: str = '') -> list[list[str]]:
-        ''' search in cwp with regex for path and value, return [[path,value],[path2,value2],] '''
-        # remove left spaces at value
-        cwp_no_space = [[i[0], i[1].lstrip()] for i in self.cwp]
-        # regex search with path-value
-        return [pv for pv in cwp_no_space if re.match(fr'{path}', pv[0]) and re.match(fr'{value}', pv[1])]
+    def cwp_search(self, path: str = '', value: str = '', regex=True) -> list[list[str]]:
+        """Search in cwp with regex (if regex=True) for path and value, return [[path, value], ...]."""
+        path_check = re.compile(
+            path).match if regex else lambda s: s.startswith(path)
+        value_check = re.compile(
+            value).match if regex else lambda s: s.startswith(value.lstrip())
+
+        return [[p, v.lstrip()] for p, v in self.cwp if path_check(p) and value_check(v.lstrip())]
+
+    def cwp_search_capture(self, path: str = '', value: str = '') -> list[list[str]]:
+        """Search in cwp with regex for path and value, return [[groups...], ...]."""
+        path_regex = re.compile(path)
+        value_regex = re.compile(value)
+        results = []
+
+        for p, v in self.cwp:
+            v2 = v.lstrip()
+            m1, m2 = path_regex.match(p), value_regex.match(v2)
+            if m1 and m2:
+                groups = list(m1.groups()) + list(m2.groups())
+                if groups:
+                    results.append(groups)
+
+        return results
 
     def cwp_serial_check(self, path_and_value_text: str) -> bool:
         ''' check serial lines in cwp with cwp-text (multiline,regex) '''
@@ -369,8 +416,8 @@ class EditConfig:
             for iline, vline in enumerate(self.cwp):
                 # for regex
                 if (regex_match and
-                    re.match(fr'{old_list[0]}', vline[0]) and
-                    re.match(fr'{old_list[1]}', vline[1])
+                        re.match(fr'{old_list[0]}', vline[0]) and
+                        re.match(fr'{old_list[1]}', vline[1])
                     ):
                     all_replace_line.append(iline)
                     if not multiple_match:
