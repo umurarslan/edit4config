@@ -1,7 +1,7 @@
 '''
 Nokia SROS, Cisco IOS style (parent/child with space indentation) config edit module with add, delete, replace and search function with regex supported.
 
-Version: 2025.09.13
+Version: 2025.09.14
 
 '''
 
